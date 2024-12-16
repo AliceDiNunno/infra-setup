@@ -1,0 +1,7 @@
+---
+- name: Reboot the server
+  become: yes
+  ansible.builtin.reboot:
+    reboot_timeout: 600
+    test_command: whoami
+    msg: "Rebooting the server to apply updates, please wait... (issued by Ansible)"

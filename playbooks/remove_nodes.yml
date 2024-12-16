@@ -1,0 +1,8 @@
+---
+- name: Remove k3s agent from non-server nodes
+  hosts: yeencluster
+  tasks:
+    - name: Run k3s-agent-uninstall.sh
+      become: yes
+      command: /usr/local/bin/k3s-agent-uninstall.sh
+      when: not cluster_primary | default(false)

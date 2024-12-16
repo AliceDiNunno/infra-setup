@@ -1,0 +1,13 @@
+- name: Check if k3s is installed
+  command: which k3s
+  register: k3s_installed
+  ignore_errors: yes
+
+- name: Join k3s cluster
+  shell: curl -sfL https://get.k3s.io | sh -
+  when: k3s_installed.rc != 0  
+  environment:
+    K3S_URL: "https://{{ k3s_url }}:6443"
+    K3S_TOKEN: "{{ token }}"
+  register: k3s_join
+ 

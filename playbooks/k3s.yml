@@ -1,0 +1,86 @@
+---
+- name: Disable swap on all cluster nodes except macOS
+  hosts: yeencluster
+  become: true
+  vars:
+    task_folder: ../tasks/yeencluster
+  tasks:
+    - include_tasks: "{{ task_folder }}/disable-swap.yml"
+      register: swap_disabled
+
+    - set_fact:
+        cmdline_txt_path: /boot/firmware/cmdline.txt
+
+    - include_tasks: "{{ task_folder }}/enable-cgroup.yml"
+      vars:
+        key: cgroup_enable
+        value: memory
+        update: false
+      register: cgroup_enabled
+  
+    - include_tasks: "{{ task_folder }}/enable-cgroup.yml"
+      vars:
+        key: cgroup_enable
+        value: cpu
+        update: false
+      register: cgroup_cpu_enabled
+
+    - include_tasks: "{{ task_folder }}/enable-cgroup.yml"
+      vars:
+        key: cgroup_memory
+        value: 1
+        update: true
+      register: cgroup_memory_enabled
+
+    - include_tasks: "{{ task_folder }}/reboot.yml"
+      when: swap_disabled.changed or cgroup_memory_enabled.changed or cgroup_cpu_enabled.changed or cgroup_enabled.changed
+
+- name: Install Kubernetes server on primary node
+  hosts: yeencluster
+  become: true
+  vars:
+    task_folder: ../tasks/yeencluster
+  tasks:
+    - name: Set k8s_ip fact
+      set_fact:
+        k3s_ip: "{{ ansible_host }}"
+      when: cluster_primary | default(false)
+
+    - include_tasks: "{{ task_folder }}/install-k3s-server.yml"
+      when: cluster_primary | default(false)
+
+- name: Install Kubernetes agent on all other nodes
+  hosts: yeencluster
+  become: true
+  vars:
+    task_folder: ../tasks/yeencluster
+  tasks:
+    - name: Set primary node IP fact
+      set_fact:
+        primary_node_ip: "{{ hostvars[item].ansible_host }}"
+      when: hostvars[item].cluster_primary | default(false)
+      with_items: "{{ groups['yeencluster'] }}"
+      register: primary_node_ip_result
+
+    - include_tasks: "{{ task_folder }}/get-k3s-token.yml"
+      when: cluster_primary | default(false)
+      register: k3s_token_result
+      run_once: true 
+         
+    - name: Set k3s token fact
+      ansible.builtin.set_fact:
+        k3s_token: "{{ k3s_main_token }}"
+      run_once: true
+      delegate_to: "{{ item }}"
+      with_items: "{{ groups['yeencluster'] }}"
+
+    - name: Debug k3s_token
+      debug:
+        msg: "k3s_token is {{ k3s_token }}"
+
+ 
+    - include_tasks: "{{ task_folder }}/join-k3s.yml"
+      vars:
+        token: "{{ k3s_token }}"
+        k3s_url: "{{ primary_node_ip }}"
+      when: not cluster_primary | default(false)

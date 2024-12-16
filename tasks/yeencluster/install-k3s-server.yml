@@ -1,0 +1,22 @@
+---
+- name: Check if k3s is already installed
+  command: k3s --version
+  register: k3s_installed
+  ignore_errors: yes
+
+- name: Install k3s server
+  shell: |
+    curl -sfL https://get.k3s.io | INSTALL_K3S_EXEC="server --disable=traefik --flannel-backend=host-gw --tls-san={{ k3s_ip }} --bind-address={{ k3s_ip }} --advertise-address={{ k3s_ip }} --node-ip={{ k3s_ip }} --cluster-init" sh -s -
+  when: k3s_installed.failed
+
+- name: Set k3s kubeconfig permissions
+  file:
+    path: /etc/rancher/k3s/k3s.yaml
+    mode: '0644'
+    owner: root
+    group: root
+
+- name: Check if kubectl returns at least one node
+  command: kubectl get nodes --no-headers
+  register: kubectl_nodes
+  failed_when: kubectl_nodes.stdout_lines | length == 0
